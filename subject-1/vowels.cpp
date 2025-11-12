@@ -12,3 +12,10 @@ std::string remove_vowels(std::string s) {
     }), s.end());
     return s;
 }
+
+int main() {
+    std::string text = "This is an example sentence.";
+    std::string no_vowels = remove_vowels(text);
+    std::cout << no_vowels << std::endl; // Ths s n xmpl sntnc.
+    return 0;
+}
