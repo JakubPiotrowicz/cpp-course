@@ -1,4 +1,4 @@
-#include "heavy_template.h"
+#include "heavy_template.hpp"
 
 // The template's implementation
 template<typename T>
