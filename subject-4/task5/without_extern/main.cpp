@@ -1,5 +1,5 @@
-#include "heavy_template.h"
-#include "user1.h" // Include the header for our other user
+#include "heavy_template.hpp"
+#include "user1.hpp" // Include the header for our other user
 
 int main() {
     HeavyTemplate<int> main_heavy;

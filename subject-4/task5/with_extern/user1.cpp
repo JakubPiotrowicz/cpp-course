@@ -1,5 +1,5 @@
-#include "user1.h"
-#include "heavy_template.h"
+#include "user1.hpp"
+#include "heavy_template.hpp"
 
 void runActionFromUser1() {
     HeavyTemplate<int> user1_heavy;
