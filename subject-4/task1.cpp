@@ -24,6 +24,11 @@ public:
     void process(Func f) {
         f(value);
     }
+
+    template<auto U>
+    void process2() {
+        U(value);
+    }
 };
 
 // -- Function Template --
@@ -45,6 +50,18 @@ int main() {
     // Instantiate DataContainer for a double.
     DataContainer<double> doubleContainer(3.14159);
     printContainerValue(doubleContainer);
+
+    // doubleContainer.process([](std::string val) {
+    //     std::cout << "Processing double value: " << val << std::endl;
+    // }); // This would cause a compilation error due to type mismatch.
+
+    doubleContainer.process([](double val) {
+        std::cout << "Processing double value: " << val << std::endl;
+    });
+
+    doubleContainer.process2<[](double val) {
+        std::cout << "Processing-2 double value: " << val << std::endl;
+    }>();
 
     return 0;
 }
