@@ -12,9 +12,9 @@ int main() {
     greet("Bob");          // Works with string literal
 
     std::string text = "abcdef";
-    std::string_view part = text.substr(1, 3); // "bcd"
-    std::cout << "Substring view: " << part << '\n';
-
-    // Be careful: string_view does not own memory
+    std::string_view part = std::string_view{text}.substr(1, 3);
+    // Be careful: string_view does not own memory (std::string::substr)
     // If 'text' is destroyed, 'part' becomes dangling!
+    // std::string_view part = text.substr(1, 3); // incorrect
+    std::cout << part << '\n';
 }
