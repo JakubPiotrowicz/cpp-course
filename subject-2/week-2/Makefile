@@ -1,47 +1,46 @@
 CXX := g++
-CC := gcc
 CXXFLAGS := -std=c++20 -Wall -Wextra -Wpedantic -O0
-CFLAGS := -std=c17 -Wall -Wextra -Wpedantic -O0
 
-PROGRAMS := build/01-build-demo build/02-state-demo build/03-macros build/04-using \
-            build/05-initialization build/06-c-linkage-demo build/07-forward
-OBJECTS := build/01-build/main.o build/01-build/math.o \
-           build/02-state/main.o build/02-state/counter.o \
-           build/06-c-linkage/main.o build/06-c-linkage/api.o
+SINGLE := $(wildcard [0-9][0-9]-*.cpp)
+DIRS := $(patsubst %/,%,$(wildcard [0-9][0-9]-*/))
+PROGRAMS := $(SINGLE:%.cpp=build/%) $(DIRS:%=build/%)
+BROKEN := $(patsubst %/,%,$(wildcard broken/*/))
 
-.PHONY: all run clean
+.PHONY: all run broken clean
 all: $(PROGRAMS)
 
-build/01-build-demo: build/01-build/main.o build/01-build/math.o
-
-build/02-state-demo: build/02-state/main.o build/02-state/counter.o
-
-build/06-c-linkage-demo: build/06-c-linkage/main.o build/06-c-linkage/api.o
-
-# The three multi-file programs share the same linking command.
-build/01-build-demo build/02-state-demo build/06-c-linkage-demo:
-	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
-
-# -c creates an object file; -MMD -MP records header dependencies in a .d file.
-build/%.o: %.cpp
-	@mkdir -p $(@D)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
-
-# Compile actual C code with the C compiler, then link using the C++ driver.
-build/%.o: %.c
-	@mkdir -p $(@D)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
-
-# The remaining examples each fit in one source file.
+# Przykład z jednego pliku: jedna reguła kompiluje i łączy.
 build/%: %.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LDFLAGS) $< $(LDLIBS) -o $@
 
--include $(OBJECTS:.o=.d)
+# Przykład z katalogu: każdy plik .cpp kompiluje się osobno do pliku obiektowego (-c),
+# a potem wszystkie obiekty łączy sterownik C++. Opcje -MMD -MP zapisują zależności od nagłówków
+# w plikach .d, dzięki czemu po zmianie nagłówka make kompiluje ponownie tylko zależne pliki.
+build/obj/%.o: %.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+define DIR_PROGRAM
+OBJECTS_$(1) := $$(patsubst %.cpp,build/obj/%.o,$$(wildcard $(1)/*.cpp))
+build/$(1): $$(OBJECTS_$(1))
+	$$(CXX) $$(LDFLAGS) $$^ $$(LDLIBS) -o $$@
+-include $$(OBJECTS_$(1):.o=.d)
+endef
+$(foreach dir,$(DIRS),$(eval $(call DIR_PROGRAM,$(dir))))
 
 run: all
 	@set -e; for program in $(PROGRAMS); do \
 	    printf '\n>>> %s\n' "$$program"; "./$$program"; \
+	done
+
+# Celowo błędne warianty. Każdy podkatalog broken/ to osobny program. Błędy kompilacji i łączenia
+# są tu oczekiwane, więc pętla nie przerywa pracy po pierwszym z nich.
+broken:
+	@mkdir -p build/broken
+	@for dir in $(BROKEN); do \
+	    printf '\n>>> %s\n' "$$dir"; \
+	    $(CXX) $(CXXFLAGS) $$dir/*.cpp -o build/$$dir || true; \
 	done
 
 clean:

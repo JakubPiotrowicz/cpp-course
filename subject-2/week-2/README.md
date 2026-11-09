@@ -1,350 +1,275 @@
-# Dział 2 — kompilowanie i przestrzenie nazw
+# Temat 2, tydzień 2 - powiązanie nazw, stałe, inicjowanie i przestrzenie nazw
+
+Przegląd całego tematu i zestawienie z czytankami: [../README.md](../README.md).
+Lista czytanek: [../czytanki.md](../czytanki.md). Tydzień 1 ([../week-1/](../week-1/)) dotyczy osobnej kompilacji,
+preprocesora, przeciążania i łączenia z C.
 
 ## Uruchomienie
 
-Z głównego katalogu repozytorium przejdź do katalogu z przykładami:
-
 ```bash
 cd subject-2/week-2
-make                 # buduje wszystkie poprawne przykłady
+make                 # buduje wszystkie przykłady
 make run             # uruchamia je po kolei
 ```
 
-Wszystkie dalsze polecenia wykonuj z katalogu `week-2`.
-Wymagane: `g++`, `gcc`, GNU Make; do podglądu symboli `nm`.
-Przykłady korzystają z C++20 i C17 i nie wymagają danych z klawiatury.
-Pliki wynikowe trafiają do ignorowanego przez Git `build/`.
-`make clean` usuwa ten katalog. Aby zmienić kompilatory, wykonaj
-`make clean`, a następnie `make CXX=clang++ CC=clang`.
-Po zmianie flag kompilacji też zacznij od `make clean`.
-
-Niektóre polecenia włączają celowo niepoprawne warianty kodu przez makra `DEMO_...`.
-Opis przy każdym z nich wyjaśnia, czy błąd powinien wystąpić podczas kompilacji, czy podczas łączenia.
-Zwykłe `make` nie włącza tych wariantów.
+Pliki wynikowe trafiają do ignorowanego przez Git katalogu `build/`, a `make clean` go usuwa.
+Czytaj ten plik po kolei, a przy każdej sekcji zajrzyj do wskazanego pliku lub katalogu.
+Katalog [broken/](broken/) zawiera programy, które mają się źle zachowywać (błędy kompilacji i inicjowania).
+Buduje je osobno `make broken`, a tabela w sekcji 7 mówi, czego się spodziewać.
+Wymagane: `g++` w wersji obsługującej C++20, GNU Make oraz `nm`. Przykłady nie czytają danych z klawiatury.
 
 | Przykład | Pliki | Zagadnienie |
 | --- | --- | --- |
-| 1 | [01-build/](01-build/) | Osobna kompilacja, łączenie, nagłówki i przeciążanie funkcji. |
-| 2 | [02-state/](02-state/) | `extern`, powiązanie nazw i trwałość zmiennych `static`. |
-| 3 | [03-macros.cpp](03-macros.cpp) | Preprocesor, `const` i `constexpr`. |
-| 4 | [04-using.cpp](04-using.cpp) | Przestrzenie nazw, deklaracja i dyrektywa `using`. |
-| 5 | [05-initialization.cpp](05-initialization.cpp) | Inicjalizacja przy pierwszym użyciu i `constinit`. |
-| 6 | [06-c-linkage/](06-c-linkage/) | Łączenie kodu C i C++ przez interfejs z `extern "C"`. |
-| 7 | [07-forward.cpp](07-forward.cpp) | Deklaracje zapowiadające i niepełne typy. |
+| 1 | [01-linkage/](01-linkage/) | `extern`, `static` na poziomie pliku, przestrzeń anonimowa, `static` w funkcji. |
+| 2 | [02-constants.cpp](02-constants.cpp) | `const`, `constexpr` i makra. |
+| 3 | [03-initialization.cpp](03-initialization.cpp) | Kolejność inicjowania obiektów globalnych, `static` w funkcji, `constinit`. |
+| 4 | [04-namespaces.cpp](04-namespaces.cpp) | Deklaracja i dyrektywa `using`, aliasy, ADL. |
+| 5 | [05-if-constexpr.cpp](05-if-constexpr.cpp) | Instrukcja warunkowa wyliczana w czasie kompilacji. |
+| 6 | [06-bitset.cpp](06-bitset.cpp) | `std::bitset` i uwaga o kontenerach `flat_*`. |
 
-## 1. Dwa pliki źródłowe, kompilator i linker
-
-W `01-build/main.cpp` znajdują się dwa wywołania `math::add`:
-dla dwóch liczb oraz dla dwóch punktów. Struktura `Point` przechowuje parę współrzędnych.
+## 1. `extern`, `static` i powiązanie nazw
 
 ```bash
-./build/01-build-demo
-```
-
-Wynik:
-
-```text
-5
-4 6
-```
-
-Podział między `math.hpp` a `math.cpp` pozwala kompilować pliki osobno:
-
-- Nagłówek opisuje typ i deklaruje funkcje. Samo `int add(int, int);` nie jest definicją funkcji.
-- `math.cpp` zawiera definicje, czyli ciała funkcji. Włącza własny nagłówek, więc kompilator może sprawdzić ich zgodność z deklaracjami.
-- Kompilator wybiera przeciążenie na podstawie typów argumentów. Sam typ wyniku nie wystarczyłby do przeciążenia.
-- Każdy `.cpp` po przetworzeniu dyrektyw preprocesora, w tym rozwinięciu `#include`, tworzy osobną jednostkę translacji. Taki podział na pliki i nagłówki jest niezależny od modułów C++20 korzystających z `import`.
-
-### Osobne kompilowanie i łączenie
-
-```bash
-mkdir -p build/manual
-g++ -std=c++20 -Wall -Wextra -Wpedantic -c 01-build/main.cpp -o build/manual/main.o
-g++ -std=c++20 -Wall -Wextra -Wpedantic -c 01-build/math.cpp -o build/manual/math.o
-g++ build/manual/main.o build/manual/math.o -o build/manual/demo
-./build/manual/demo
-```
-
-`-c` zatrzymuje sterownik po utworzeniu pliku obiektowego. `.o` nie jest gotowym programem.
-Ostatnia komenda `g++` uruchamia łączenie i dołącza biblioteki potrzebne C++.
-
-Do skompilowania `main.cpp` wystarczają deklaracje funkcji z nagłówka — tak powstaje `main.o`.
-Do utworzenia całego programu potrzebne są też definicje funkcji z `math.o`.
-Pominięcie tego pliku powoduje błąd linkera:
-
-```bash
-g++ build/manual/main.o -o build/manual/missing-definition
-```
-
-Linker zgłasza `undefined reference` dla `math::add`. Kompilacja wywołań już się udała;
-teraz brakuje definicji przy łączeniu. Zwróć uwagę na etap, na którym występuje błąd.
-Dokładne brzmienie komunikatu zależy od narzędzi.
-
-### Kompilowanie przyrostowe
-
-```bash
-make build/01-build-demo
-make build/01-build-demo
-touch 01-build/math.cpp
-make build/01-build-demo
-touch 01-build/math.hpp
-make build/01-build-demo
-```
-
-Drugie `make` nic nie kompiluje. Po zmianie czasu modyfikacji `math.cpp` powstaje
-tylko nowy `math.o`, a następnie program. Po zmianie nagłówka kompilują się **oba**
-pliki źródłowe i znów następuje łączenie. `touch` symuluje zapis pliku, bez zmiany jego treści.
-
-W `Makefile` reguła `build/%.o: %.cpp` opisuje kompilowanie pliku źródłowego do obiektowego.
-Osobne reguły określają, które pliki obiektowe należy połączyć w program.
-`-MMD -MP` generuje pliki `.d`, a `-include` wczytuje zapisane w nich zależności od nagłówków.
-To dzięki nim `make` wie, że zmiana `math.hpp` dotyczy obu `.o`.
-Wygenerowane zależności można odczytać poleceniem:
-
-```bash
-cat build/01-build/main.d
-```
-
-### Osłony nagłówków i wielokrotne definicje
-
-W `main.cpp` celowo dwa razy włączamy ten sam nagłówek. `#ifndef` / `#define` / `#endif`
-sprawiają, że jego zawartość trafia do tej jednostki translacji tylko raz.
-Bez osłony dwie definicje `Point` w jednej jednostce spowodowałyby błąd kompilacji.
-Same powtórzone zgodne deklaracje funkcji byłyby dozwolone.
-
-Osłona działa w obrębie jednej jednostki translacji. Nie zapobiega umieszczeniu definicji
-zwykłej funkcji z nagłówka w dwóch różnych jednostkach: każdy plik jest przetwarzany osobno.
-Makro `DEMO_HEADER_DEFINITION` włącza taką definicję w `math.hpp`:
-
-```bash
-g++ -std=c++20 -DDEMO_HEADER_DEFINITION 01-build/main.cpp 01-build/math.cpp -o build/duplicate-definition
-```
-
-Linker zgłasza `multiple definition` dla `math::header_bonus`.
-Typowe rozwiązanie: deklaracja w `.hpp`, definicja w jednym `.cpp`.
-Funkcje `inline` podlegają innym zasadom: ich identyczne definicje mogą występować
-w wielu jednostkach translacji przy spełnieniu reguły jednej definicji (ODR).
-
-### Przeciążanie funkcji i name mangling
-
-```bash
-nm build/01-build/math.o
-nm -C build/01-build/math.o
-```
-
-Znajdź dwa symbole `math::add`. Pierwszy widok pokazuje nazwy zakodowane dla linkera,
-drugi je odkodowuje. Name mangling pozwala tu odróżnić przestrzeń nazw i typy parametrów.
-Dokładna postać zakodowanej nazwy zależy od ABI, czyli reguł współpracy skompilowanych fragmentów programu.
-Zwróć uwagę na to, że oba przeciążenia mają osobne symbole.
-
-## 2. `extern` i dwa znaczenia `static`
-
-Pliki w `02-state` pokazują trzy sposoby przechowywania liczników.
-Przed uruchomieniem prześledź zmiany `shared_count`, obu zmiennych `file_count` oraz `last_id`.
-
-```bash
-./build/02-state-demo
+./build/01-linkage
 ```
 
 ```text
 shared: 12
-main private: 1
-counter private: 2
+file_total: main 1, counter 2
+hidden_total: main 3, counter 2
 ids: 1 2
 ```
 
-`extern int shared_count;` jest deklaracją. Jedna definicja `int shared_count = 0;`
-znajduje się w `counter.cpp`. Dwa wywołania zwiększają licznik do 2,
-a `main` dodaje 10 do **tego samego obiektu**.
-Nagłówek pozwala kompilować oba pliki niezależnie, a linker łączy odwołania z definicją.
+Przed uruchomieniem prześledź, ile razy zmienia się każda zmienna w `main.cpp` i `counter.cpp`.
 
-`static int file_count` na poziomie pliku ma wewnętrzne powiązanie:
-obiekty z obu `.cpp` są osobne. W `main.cpp` zwiększamy jego licznik raz,
-w `counter.cpp` — dwa razy. Bez `static` te dwie definicje tej samej nazwy globalnej
-naruszałyby regułę jednej definicji. W nowym kodzie podobną prywatność nazw
-często zapisuje się anonimową przestrzenią `namespace { ... }`.
+- `extern int shared_count;` w [counter.hpp](01-linkage/counter.hpp) jest **deklaracją**. Jedyna **definicja**
+  (`int shared_count = 0;`) jest w [counter.cpp](01-linkage/counter.cpp). Oba pliki działają na tym samym obiekcie,
+  więc dwa wywołania `record_call()` i `+= 10` w `main` dają 12.
+- `static int file_total` na poziomie pliku ma **powiązanie wewnętrzne**: nazwa jest widoczna tylko w tym pliku.
+  Zmienne `file_total` w `main.cpp` i `counter.cpp` są dwiema różnymi zmiennymi. Bez `static` ta sama nazwa globalna
+  zdefiniowana w dwóch plikach dałaby błąd łączenia.
+- Przestrzeń anonimowa (`namespace { ... }`) daje ten sam skutek i w nowym kodzie jest zalecana zamiast `static`.
+  Można to sprawdzić w tablicy symboli: `nm build/obj/01-linkage/counter.o`.
 
-`static int last_id` **wewnątrz funkcji** ma zakres lokalny i trwałość statyczną.
-Nie znika po wyjściu z funkcji, dlatego drugie wywołanie zwraca 2.
-To inna rola słowa `static` niż ograniczenie powiązania nazwy na poziomie pliku.
+  ```text
+  0000000000000004 b _ZL10file_total
+  0000000000000008 b _ZN12_GLOBAL__N_112hidden_totalE
+  0000000000000000 B _ZN7counter12shared_countE
+  ```
 
-Zwróć uwagę, że `extern int shared_count = 0;` byłoby już definicją z powodu inicjalizatora.
-Dla zwykłej zmiennej włączanej do wielu `.cpp`
-wróciłby problem wielu definicji. `extern` nie oznacza automatycznie „bez definicji”.
+  Wielka litera `B` oznacza symbol widoczny dla innych plików (`shared_count`), mała `b` symbol lokalny dla pliku.
+- `static int last_id` **wewnątrz funkcji** to inna rola słowa `static`: zmienna ma zasięg lokalny, a czas życia
+  statyczny. Nie znika po wyjściu z funkcji, dlatego kolejne wywołania `next_id()` dają 1 i 2.
+  Do składowych statycznych klas wraca [temat 3](../../subject-3/week-2/README.md).
+- `extern int shared_count = 0;` byłoby już definicją (bo ma inicjator). `extern` nie znaczy ,,bez definicji''.
 
-## 3. Preprocesor, `const` i `constexpr`
-
-W `03-macros.cpp` makro i dwie stałe wyglądają podobnie, ale zachowują się inaczej.
-Przed uruchomieniem przewidź wynik wyrażenia `4 * SCALE`:
+## 2. `const`, `constexpr` i makra
 
 ```bash
-./build/03-macros
+./build/02-constants
 ```
 
 ```text
-macro: 11
-const: 20
-constexpr: 20
-parenthesized macro: 20
+PI_MACRO = 3.14159, pi_const = 3.14159, geometry::pi = 3.14159
+adres pi_const można wziąć: true
+
+wewnątrz bloku: 5
+na zewnątrz bloku: 3
+
+computed_later = 5, known_early = 5
+exported_limit = 9
 ```
 
-`SCALE` rozwija się do `2 + 3`, zatem dostajemy `4 * 2 + 3`.
-Makro jest podmianą tokenów, bez własnego typu ani reguł zakresu jak dla zwykłej zmiennej.
-Nawiasy naprawiają tę konkretną pułapkę. Dla stałej liczbowej zwykle prościej użyć typowanego obiektu.
+- Makro to podmiana tekstu: nie ma typu, zasięgu ani adresu, a jego nazwa zastępuje **każde** wystąpienie
+  w pliku, także nazwę pola struktury ([broken/macro-collision](broken/macro-collision/main.cpp)).
+  Stała (`const`, `constexpr`) jest obiektem o typie i zasięgu: można ją przesłonić w bloku i wziąć jej adres.
+  Do stałych liczbowych w C++ używamy `constexpr`, a nie `#define`.
+- `const` zabrania modyfikacji, ale wartość początkowa może być obliczona dopiero w czasie działania
+  (`computed_later`). `constexpr` wymaga wartości znanej w czasie kompilacji i zarazem oznacza `const`.
+  Zwykłe `const int x = 2 + 3;` też bywa stałą w czasie kompilacji, ale to zależy od inicjatora, a nie od samego `const`.
+- `const` na poziomie pliku ma **powiązanie wewnętrzne** (każdy plik ma własny egzemplarz), w przeciwieństwie do
+  zwykłych zmiennych globalnych. Dopiero `extern const int exported_limit = 9;` daje powiązanie zewnętrzne:
 
-`const` zakazuje modyfikowania obiektu, ale ogólnie może mieć inicjalizator obliczony podczas działania.
-`constexpr` wymaga stałego inicjalizatora. Tutaj również `const int scale = 2 + 3`
-może wystąpić w wyrażeniu stałym. Samo `const` nie rozstrzyga, kiedy zostanie obliczony inicjalizator.
+  ```bash
+  nm build/02-constants | grep -E "pi_const|exported_limit"
+  ```
 
-Makro `DEMO_VERBOSE` pozwala zmienić kod programu podczas kompilacji:
+  ```text
+  0000000000002018 R exported_limit
+  0000000000002008 r _ZL8pi_const
+  ```
 
-```bash
-g++ -std=c++20 -Wall -Wextra -Wpedantic -DDEMO_VERBOSE=1 03-macros.cpp -o build/macros-verbose
-./build/macros-verbose
-```
+  Zwykle nie piszemy tego ręcznie. Wspólną stałą w nagłówku definiuje się jako `inline constexpr`
+  ([temat 3](../../subject-3/week-2/README.md), sekcja 2).
 
-Dojdzie linia `verbose mode is enabled`. `#if` wybiera źródło przed właściwą kompilacją.
-`-D` definiuje makro z wiersza poleceń. Sam wynik preprocesora można podejrzeć tak:
-
-```bash
-g++ -std=c++20 -E -P 03-macros.cpp | rg 'macro:|verbose mode'
-```
-
-Zobaczymy rozwinięte `4 * 2 + 3`, a bez `-D` linia z `verbose mode` zniknie.
-Polecenie używa `rg`; jeśli go nie ma, można użyć `grep -E` z tym samym wzorcem.
-
-Zwróć uwagę na różnicę między `#if` a `#ifdef`:
-`#if DEMO_VERBOSE` sprawdza wartość, więc `-DDEMO_VERBOSE=0` nie włącza wypisywania.
-`#ifdef DEMO_VERBOSE` sprawdzałoby tylko istnienie makra, także z wartością 0.
-
-## 4. Przestrzenie nazw i `using`
+## 3. Inicjowanie obiektów globalnych
 
 ```bash
-./build/04-using
+./build/03-initialization
 ```
 
 ```text
-metric::step: 1
-imperial::step: 3
-using-declaration: 1
-using-directive: 1
-qualified again: 1
-```
-
-W `04-using.cpp` występują trzy sposoby odwoływania się do nazwy:
-
-- `metric::step` jawnie wskazuje wybraną przestrzeń nazw.
-- `using metric::step;` to **deklaracja using** — wprowadza wybraną nazwę do bloku.
-- `using namespace metric;` to **dyrektywa using** — pozwala uwzględniać nazwy z tej przestrzeni przy wyszukiwaniu. Nie kopiuje obiektów ani nie scala przestrzeni.
-
-Makro `DEMO_AMBIGUOUS` włącza drugi wpis `using namespace` w tym samym bloku:
-
-```bash
-g++ -std=c++20 -DDEMO_AMBIGUOUS -fsyntax-only 04-using.cpp
-```
-
-Kompilator nie może wybrać między `metric::step` i `imperial::step`.
-Wadliwe jest użycie nazwy po drugiej dyrektywie; samo wpisanie obu dyrektyw nie musi jeszcze być błędem.
-`-fsyntax-only` sprawdza kod bez tworzenia programu.
-
-Użycie `metric::step` albo `imperial::step` usuwa niejednoznaczność nawet przy zachowaniu obu dyrektyw.
-Unikaj globalnego `using namespace ...` w nagłówkach: taka dyrektywa wpływa na wyszukiwanie
-nazw także w plikach, które je włączają.
-
-## 5. Inicjalizacja przy pierwszym użyciu i `constinit`
-
-W `05-initialization.cpp` struktura `Registry` ma licznik i konstruktor,
-który wypisuje komunikat. Funkcja `registry()` zwraca referencję do jednego obiektu.
-
-```bash
-./build/05-initialization
-```
-
-```text
-main started
+  konstruktor: globalny pierwszy
+  konstruktor: globalny drugi
+main się zaczyna
 constinit counter: 1
-Registry initialized
-first count: 1
-second count: 2
-same object: true
+pierwsze wywołanie registry():
+  konstruktor Registry
+drugie wywołanie registry():
+count: 2, ten sam obiekt: true
+main się kończy
+  destruktor: globalny drugi
+  destruktor: globalny pierwszy
 ```
 
-Dwie wizyty w `registry()` dają tylko jedno wywołanie konstruktora.
-Lokalny `static Registry instance` jest dynamicznie inicjalizowany przy pierwszym dojściu do deklaracji.
-Referencje `first` i `second` odnoszą się do tego samego obiektu, co potwierdza porównanie adresów.
+- Obiekty globalne powstają **przed** `main`, w kolejności definicji w pliku, a niszczone są **po** zakończeniu `main`,
+  w kolejności odwrotnej.
+- Standard **nie określa** kolejności inicjowania obiektów globalnych z różnych plików. Jeśli konstruktor
+  jednego obiektu używa obiektu zdefiniowanego w innym pliku, wynik zależy od kolejności łączenia
+  (ang. static initialization order fiasco). Przykład w [broken/init-order](broken/init-order/second.cpp)
+  buduje się bez błędu i działa:
 
-Jeżeli konstruktor globalnego obiektu w `a.cpp`
-korzysta z obiektu dynamicznie inicjalizowanego w `b.cpp`, nie wolno po prostu zakładać,
-że ten drugi jest już gotowy. Akcesor z lokalnym `static` pozwala zainicjalizować potrzebny
-obiekt przy jego pierwszym użyciu. Zwróć uwagę, że `Registry initialized` pojawia się
-dopiero po `main started`, a przy drugim wywołaniu `registry()` konstruktor nie wykonuje się ponownie.
-To rozwiązanie nie usuwa automatycznie cyklicznych zależności inicjalizacji ani problemów kolejności niszczenia obiektów.
+  ```bash
+  make broken
+  ./build/broken/init-order
+  ```
 
-`constinit` wymaga statycznej inicjalizacji, ale **nie oznacza niezmienności**.
-Dlatego `++counter` działa. Makro `DEMO_BAD_CONSTINIT` włącza inicjalizator,
-który nie spełnia wymagania `constinit`:
+  ```text
+  first.cpp: liczę wartość
+  value = 42, copy_of_value = 42
+  ```
+
+  Po zmianie kolejności plików w poleceniu łączenia wynik jest inny, choć kod się nie zmienił:
+
+  ```bash
+  g++ -std=c++20 broken/init-order/second.cpp broken/init-order/first.cpp -o build/init-order-reversed
+  ./build/init-order-reversed
+  ```
+
+  ```text
+  first.cpp: liczę wartość
+  value = 42, copy_of_value = 0
+  ```
+
+  Zmienna `value` przed inicjowaniem dynamicznym ma wartość 0 (obiekty statyczne są najpierw zerowane),
+  więc `copy_of_value` kopiuje zero. Błąd jest groźny, bo wynik zależy od narzędzi, a nie od kodu. Dokładny wynik
+  w drugim wariancie zależy od konsolidatora.
+- Lekarstwo: **inicjowanie przy pierwszym użyciu**. Zmienna lokalna `static` w funkcji (`registry()`) jest inicjowana
+  przy pierwszym przejściu przez deklarację. Każdy, kto potrzebuje obiektu, wywołuje funkcję, więc nigdy nie zobaczy go
+  przed inicjowaniem. Konstruktor `Registry` wykonuje się raz, dopiero po `main się zaczyna`.
+  Rozwiązanie nie usuwa cyklicznych zależności ani problemów z kolejnością niszczenia.
+- `constinit` (C++20) wymaga, żeby zmienna była zainicjowana w czasie kompilacji (stałym inicjatorem).
+  Taka zmienna nie bierze udziału w problemie kolejności, bo jest gotowa, zanim cokolwiek się wykona.
+  `constinit` **nie oznacza niezmienności**, dlatego `++counter` działa. Inicjator, którego nie da się policzyć w czasie
+  kompilacji, jest błędem ([broken/constinit-dynamic](broken/constinit-dynamic/main.cpp)).
+
+## 4. Przestrzenie nazw
 
 ```bash
-g++ -std=c++20 -DDEMO_BAD_CONSTINIT -fsyntax-only 05-initialization.cpp
+./build/04-namespaces
 ```
 
-Kompilator zgłasza błąd: inicjalizator `bad_counter` wywołuje funkcję bez `constexpr`.
-Zwykłe `const int x = initial_value();` byłoby dozwolone, lecz nie zapewniałoby statycznej inicjalizacji.
+```text
+metric::step: 1, imperial::step: 3
+step: 1
+step: 3
+ct::version() = 7
+okrąg o promieniu 4
+```
 
-## 6. Łączenie kodu C i C++: `extern "C"`
+- Nazwa kwalifikowana (`metric::step`) wskazuje przestrzeń jawnie.
+- **Deklaracja** `using metric::step;` wprowadza jedną nazwę do bieżącego bloku.
+- **Dyrektywa** `using namespace imperial;` udostępnia nazwy z przestrzeni przy wyszukiwaniu. Niczego nie kopiuje
+  ani nie scala przestrzeni. Dwie dyrektywy z tą samą nazwą dają niejednoznaczne użycie tej nazwy
+  ([broken/ambiguous-using](broken/ambiguous-using/main.cpp)). Wpisanie obu dyrektyw nie jest jeszcze błędem,
+  błędem jest użycie nazwy bez kwalifikacji.
+- Dyrektywy `using namespace` nie umieszczamy w nagłówkach ani na poziomie pliku w kodzie wielu autorów: wpływa na
+  wyszukiwanie nazw we wszystkich plikach, które nagłówek włączą. W pliku `.cpp` lepsza jest deklaracja `using`
+  dla pojedynczej nazwy albo nazwa kwalifikowana.
+- Przestrzeń zagnieżdżoną można zapisać w jednym wierszu (`namespace company::tools`, C++17).
+  Alias (`namespace ct = company::tools;`) skraca długie nazwy.
+- **ADL** (wyszukiwanie zależne od argumentów): wywołanie `print(circle)` bez `shapes::` działa, bo kompilator szuka funkcji
+  także w przestrzeni nazw typu argumentu. Dzięki temu działa na przykład `std::cout << x` dla typów
+  z własnym `operator<<` zdefiniowanym obok typu. Zasady ADL i interfejs klasy omawia też temat 8 (rezerwa).
+  O kwestiach interfejsu przestrzeni nazw mówią czytanki z listy.
 
-W `06-c-linkage/api.c` znajduje się funkcja `triple`, a w `main.cpp` — jej wywołanie z C++.
-Wspólny nagłówek `api.h` deklaruje funkcję dla obu języków.
+## 5. `if constexpr`
 
 ```bash
-./build/06-c-linkage-demo
+./build/05-if-constexpr
 ```
 
-Wynik: `triple(7) = 21`. W `Makefile` plik `.c` kompilujemy przez `gcc`,
-a `.cpp` przez `g++`; gotowe obiekty łączymy sterownikiem C++, który dołącza jego biblioteki.
-`#ifdef __cplusplus` sprawia, że kompilator C nie zobaczy składni `extern "C"`.
+```text
+liczba całkowita 42
+liczba zmiennoprzecinkowa 2.500000
+napis tekst
+wskaźnik ma 8 bajtów
+```
 
-Teraz wyłącz otoczkę wyłącznie po stronie C++:
+- `if constexpr (warunek)` oblicza warunek w czasie kompilacji i **kompiluje tylko wybraną gałąź**. W szablonie
+  druga gałąź dla danego typu w ogóle nie jest tworzona. Dlatego `std::string(value)` nie przeszkadza w wersji
+  dla `int`. Zwykłe `if` sprawdza obie gałęzie i program się nie kompiluje
+  ([broken/if-instead-of-if-constexpr](broken/if-instead-of-if-constexpr/main.cpp)).
+- To bezpieczna alternatywa dla wyboru kodu przez `#if` (tydzień 1, sekcja 2): warunek używa typów i stałych C++, a nie
+  podmiany tekstu. Poza szablonem `if constexpr` też działa, ale wtedy obie gałęzie muszą być poprawne.
+- Szablony wyjaśnia temat 4. Tu wystarczy wiedzieć, że kompilator tworzy osobną wersję funkcji dla każdego użytego typu.
+  Przy błędzie w szablonie komunikat jest długi: najważniejszy jest pierwszy, w którym jest ,,error''.
+
+## 6. `std::bitset` i kontenery `flat_*`
 
 ```bash
-g++ -std=c++20 -DDEMO_CPP_LINKAGE -c 06-c-linkage/main.cpp -o build/cpp-linkage.o
-g++ build/cpp-linkage.o build/06-c-linkage/api.o -o build/cpp-linkage-broken
+./build/06-bitset
 ```
 
-Pierwsza komenda przechodzi, druga ma dać `undefined reference` do `triple(int)`.
-W GCC i Clangu przy użyciu ABI na Linuksie kod C eksportuje `triple`,
-a kod C++ bez `extern "C"` żąda zakodowanej nazwy uwzględniającej typ parametru.
+```text
+flags = 00101010, ustawionych bitów: 3
+test(3): true, test(4): false
+po flip() = 11010101
+z napisu: 00001011, z liczby: 00001010
+and: 00001010, or: 00001011, xor: 00000001, << 2: 00101100
+jako liczba: 11
+uprawnienia (Execute, Write, Read): 101
+```
+
+- `std::bitset<N>` to zbiór `N` flag, których liczba jest znana w czasie kompilacji. Ma operacje bitowe (`&`, `|`, `^`, `~`,
+  `<<`), `set`, `reset`, `flip`, `test`, `count` oraz konwersje z napisu i liczby. Bit o numerze 0 jest ostatni w zapisie.
+- Czytanki wymieniają też kontenery `flat_set`, `flat_map`, `flat_multiset` i `flat_multimap` z C++23.
+  Przechowują elementy w posortowanym wektorze: mniej pamięci i szybszy odczyt, ale wolniejsze wstawianie.
+  W `g++` 13 nagłówków `<flat_set>` i `<flat_map>` nie ma ([broken/flat-set](broken/flat-set/main.cpp)),
+  a według Moodle nie wszystkie są dostępne na `students`. Sprawdź `g++ --version` na swoim komputerze.
+  Do pracy na zajęciach wystarczą `set` i `map` z tematu 1.
+
+## 7. Celowo błędne warianty (`broken/`)
 
 ```bash
-nm build/06-c-linkage/api.o
-nm build/cpp-linkage.o | rg triple
-nm -C build/cpp-linkage.o | rg triple
+make broken
 ```
 
-W tym ABI polecenia pokazują odpowiednio `T triple`, `U _Z6triplei` i `U triple(int)`.
-`T` oznacza tu definicję funkcji, `U` — odwołanie wymagające definicji.
-`extern "C"` określa językowe powiązanie interfejsu, dzięki czemu odwołanie pasuje do funkcji C.
-`extern int shared_count;` z przykładu 2 deklaruje zmienną — to inne zastosowanie słowa `extern`.
+Polecenie kompiluje po kolei każdy podkatalog `broken/` jako osobny program. Błędy są tu oczekiwane,
+więc `make` nie przerywa pracy. Programy, które się zbudują, trafiają do `build/broken/`.
 
-Zwróć uwagę, że `extern "C"` nie tłumaczy kodu C++ na C.
-Każdy plik nadal kompilujemy we właściwym języku; uzgadniamy interfejs między nimi.
+| Katalog | Czego się spodziewać |
+| --- | --- |
+| [macro-collision](broken/macro-collision/main.cpp) | Błąd kompilacji: `expected unqualified-id before numeric constant`. |
+| [constinit-dynamic](broken/constinit-dynamic/main.cpp) | Błąd kompilacji: `'constinit' variable 'counter' does not have a constant initializer`. |
+| [init-order](broken/init-order/second.cpp) | Buduje się bez błędu. Wynik zależy od kolejności plików, patrz sekcja 3. |
+| [ambiguous-using](broken/ambiguous-using/main.cpp) | Błąd kompilacji: `call of overloaded 'step()' is ambiguous`. |
+| [if-instead-of-if-constexpr](broken/if-instead-of-if-constexpr/main.cpp) | Błąd kompilacji (długi, szablonowy): `no matching function for call to 'std::__cxx11::basic_string<char>::basic_string(const int&)'`. |
+| [flat-set](broken/flat-set/main.cpp) | Błąd kompilacji: `flat_set: No such file or directory` (w `g++` 13). |
 
-## 7. Deklaracje zapowiadające i niepełne typy
-
-W `07-forward.cpp` zapis `struct Node;` zapowiada istnienie typu.
-Wskaźnik `Node*` może być polem `Link` jeszcze przed pełną definicją `Node`.
-Po zobaczeniu definicji można utworzyć `Node node{42}` i odczytać `value`.
+Uruchomienie wariantu, który się zbudował:
 
 ```bash
-./build/07-forward
-g++ -std=c++20 -DDEMO_INCOMPLETE -fsyntax-only 07-forward.cpp
+./build/broken/init-order
 ```
 
-Pierwsze polecenie wypisuje `42`. Drugie celowo nie przechodzi:
-pole `Node target` potrzebuje pełnego typu już w miejscu definicji `BrokenLink`.
-Sama deklaracja funkcji również może używać niepełnego typu jako parametru przez wartość;
-przy definiowaniu takiej funkcji i jej wywoływaniu potrzebna będzie pełna definicja.
+## Do omówienia na zajęciach
 
-Wskaźnik wystarcza, ponieważ układ `Link` nie musi zawierać całego `Node`.
-Kompilator zna sposób przechowywania wskaźnika bez znajomości pól wskazywanego typu.
-Zwróć uwagę na różnicę między przechowywaniem adresu obiektu a przechowywaniem samego obiektu jako pola.
+- Czym różni się `static` na poziomie pliku od `static` w funkcji? Co mają wspólnego?
+- Po co deklaracja `extern` i dlaczego `extern int x = 0;` jest definicją?
+- Dlaczego stała `const` w nagłówku nie powoduje błędu wielokrotnej definicji, a zwykła zmienna globalna tak?
+- Co daje `constexpr` w porównaniu z `const` i z `#define`?
+- W jakiej kolejności powstają i znikają obiekty globalne? Co jest niezdefiniowane dla obiektów z różnych plików?
+- Dlaczego lokalna `static` rozwiązuje problem kolejności, a `constinit` go omija?
+- Czym różni się deklaracja `using` od dyrektywy `using`? Dlaczego dyrektywa nie należy do nagłówków?
+- Kiedy `if constexpr`, a kiedy `#if`?
